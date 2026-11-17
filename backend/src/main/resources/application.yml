@@ -24,7 +24,7 @@ playsense:
     key: ${STEAM_API_KEY:}
   gemini:
     key: ${GEMINI_API_KEY:}
-    model: ${GEMINI_MODEL:gemini-2.5-flash}
+    model: ${GEMINI_MODEL:gemini-3.5-flash}
 
 logging:
   level:

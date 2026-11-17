@@ -24,7 +24,7 @@ services:
       COOKIE_SECURE: "false"
       STEAM_API_KEY: ${STEAM_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
     depends_on:
       db:
         condition: service_healthy
