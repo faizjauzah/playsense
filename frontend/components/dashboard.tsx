@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { hours, relativeTime, shortDate } from "@/lib/api";
-import type { Dashboard } from "@/lib/types";
+import { useEffect, useId, useRef, useState } from "react";
+import type { DialogHTMLAttributes, ReactNode, RefObject } from "react";
+import { costPerHour, hours, money, playedDate, relativeTime, shortDate } from "@/lib/api";
+import { nextSort, sortRows, type Sort } from "@/lib/sort";
+import type { Dashboard, BacklogGame, GameMinutes } from "@/lib/types";
 
 type Hero = NonNullable<Dashboard["hero"]>;
 type Split = NonNullable<Dashboard["split"]>;
@@ -187,33 +189,241 @@ function TrendChart({ trend }: { trend: Trend }) {
   );
 }
 
+const SHOWN_GAMES = 8;
+
+const LIGHT_DISMISS = { closedby: "any" } as unknown as DialogHTMLAttributes<HTMLDialogElement>;
+
+function rateOf(game: GameMinutes, currency: string | null): string | null {
+  if (game.priceCents === null || currency === null) return null;
+  return game.priceCents === 0 ? "free" : costPerHour(game.priceCents, game.minutes, currency);
+}
+
+function priceTag(priceCents: number | null, currency: string | null): string {
+  if (priceCents === null) return "—";
+  if (priceCents === 0) return "free";
+  return currency ? money(priceCents, currency) : "—";
+}
+
+function SortHeader<K extends string>({
+  column,
+  sort,
+  onSort,
+  numeric = false,
+  children,
+}: {
+  column: K;
+  sort: Sort<K>;
+  onSort: (key: K) => void;
+  numeric?: boolean;
+  children: ReactNode;
+}) {
+  const active = sort?.key === column;
+  const mark = !sort || !active ? "" : sort.descending ? "↓" : "↑";
+
+  return (
+    <th
+      scope="col"
+      className={numeric ? "num" : undefined}
+      aria-sort={!sort || !active ? "none" : sort.descending ? "descending" : "ascending"}
+    >
+      <button type="button" className="sort-header" onClick={() => onSort(column)}>
+        {children}
+        <span className="sort-mark" aria-hidden="true">
+          {mark}
+        </span>
+      </button>
+    </th>
+  );
+}
+
 export function SplitCard({ split }: { split: Split }) {
-  const max = Math.max(1, ...split.byGame.map((game) => game.minutes));
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const shown = split.byGame.slice(0, SHOWN_GAMES);
+  const max = Math.max(1, ...shown.map((game) => game.minutes));
 
   return (
     <section className="panel">
       <div className="panel-head">
         <h2 className="panel-title">Where the hours go</h2>
-        <span className="panel-note">lifetime</span>
+        <button type="button" className="panel-action" onClick={() => dialogRef.current?.showModal()}>
+          Show all
+        </button>
       </div>
-      {split.byGame.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="empty">No playtime recorded on any game yet.</p>
       ) : (
-        <ul className="bars">
-          {split.byGame.map((game) => (
-            <li key={game.appid}>
-              <div className="bar-row">
-                <span className="bar-name">{game.name}</span>
-                <span className="bar-value num">{hours(game.minutes)}h</span>
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ width: `${(game.minutes / max) * 100}%` }} />
+        <>
+          <div className="bar-legend">
+            <span />
+            <span>lifetime</span>
+            <span>{split.priceCurrency ? `${split.priceCurrency}/hour` : ""}</span>
+          </div>
+          <ul className="bars">
+            {shown.map((game) => (
+              <li key={game.appid}>
+                <div className="bar-row">
+                  <span className="bar-name">{game.name}</span>
+                  <span className="bar-value num">{hours(game.minutes)}h</span>
+                  <span className="bar-rate num">
+                    {rateOf(game, split.priceCurrency) ?? (split.priceCurrency ? "—" : "")}
+                  </span>
+                  <div className="bar-track">
+                    <div className="bar-fill" style={{ width: `${(game.minutes / max) * 100}%` }} />
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
+      {split.value && (
+        <p className="value-callout">
+          Best value among priced games: <strong>{split.value.best.name}</strong> at{" "}
+          {rateOf(split.value.best, split.priceCurrency)} · worst:{" "}
+          <strong>{split.value.worst.name}</strong> at {rateOf(split.value.worst, split.priceCurrency)}.
+        </p>
+      )}
+      {split.priceCurrency && (
+        <p className="fine">Cost per hour is the current Steam store price, not what you paid.</p>
+      )}
+
+      <AllGamesDialog dialogRef={dialogRef} split={split} />
     </section>
+  );
+}
+
+function Sheet({
+  dialogRef,
+  title,
+  foot,
+  children,
+  onClose,
+}: {
+  dialogRef: RefObject<HTMLDialogElement | null>;
+  title: string;
+  foot: ReactNode;
+  children: ReactNode;
+  onClose?: () => void;
+}) {
+  const titleId = useId();
+
+  // Safari has no closedby yet: close when the press both starts and ends outside the dialog.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || "closedBy" in HTMLDialogElement.prototype) return;
+    const outside = (event: PointerEvent) => {
+      const rect = dialog.getBoundingClientRect();
+      return (
+        event.clientX < rect.left ||
+        event.clientX > rect.right ||
+        event.clientY < rect.top ||
+        event.clientY > rect.bottom
+      );
+    };
+    let pressedOutside = false;
+    const onDown = (event: PointerEvent) => {
+      pressedOutside = outside(event);
+    };
+    const onUp = (event: PointerEvent) => {
+      if (pressedOutside && outside(event)) dialog.close();
+    };
+    dialog.addEventListener("pointerdown", onDown);
+    dialog.addEventListener("pointerup", onUp);
+    return () => {
+      dialog.removeEventListener("pointerdown", onDown);
+      dialog.removeEventListener("pointerup", onUp);
+    };
+  }, [dialogRef]);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      {...LIGHT_DISMISS}
+      className="games-dialog"
+      aria-labelledby={titleId}
+      onClose={onClose}
+    >
+      <div className="games-dialog-head">
+        <h2 id={titleId}>{title}</h2>
+        <form method="dialog">
+          <button className="btn">Close</button>
+        </form>
+      </div>
+      <div className="games-scroll">{children}</div>
+      <div className="games-dialog-foot">
+        <p className="fine">{foot}</p>
+      </div>
+    </dialog>
+  );
+}
+
+type GameSortKey = "name" | "lifetime" | "twoWeeks" | "price" | "rate";
+
+function gameValue(game: GameMinutes, key: GameSortKey): string | number | null {
+  switch (key) {
+    case "name":
+      return game.name;
+    case "lifetime":
+      return game.minutes;
+    case "twoWeeks":
+      // Steam omits playtime_2weeks when it is zero, so a missing value means no playtime, not an unknown.
+      return game.minutesTwoWeeks ?? 0;
+    case "price":
+      return game.priceCents;
+    case "rate":
+      return game.priceCents === null || game.minutes === 0
+        ? null
+        : game.priceCents / game.minutes;
+  }
+}
+
+function AllGamesDialog({ dialogRef, split }: { dialogRef: RefObject<HTMLDialogElement | null>; split: Split }) {
+  const [sort, setSort] = useState<Sort<GameSortKey>>(null);
+  const rows = sort
+    ? sortRows(split.byGame, (game) => gameValue(game, sort.key), sort.descending)
+    : split.byGame;
+  const onSort = (key: GameSortKey) => setSort((current) => nextSort(current, key, key !== "name"));
+
+  return (
+    <Sheet
+      dialogRef={dialogRef}
+      title="Where the hours go"
+      onClose={() => setSort(null)}
+      foot={`${split.byGame.length} games with playtime. Cost per hour is priced for the 25 most-played; the rest show no rate. Current Steam store prices, not what you paid.`}
+    >
+      <table className="games-table">
+        <thead>
+          <tr>
+            <SortHeader column="name" sort={sort} onSort={onSort}>
+              Game
+            </SortHeader>
+            <SortHeader column="lifetime" sort={sort} onSort={onSort} numeric>
+              lifetime
+            </SortHeader>
+            <SortHeader column="twoWeeks" sort={sort} onSort={onSort} numeric>
+              2 weeks
+            </SortHeader>
+            <SortHeader column="price" sort={sort} onSort={onSort} numeric>
+              price
+            </SortHeader>
+            <SortHeader column="rate" sort={sort} onSort={onSort} numeric>
+              {split.priceCurrency ? `${split.priceCurrency}/hour` : "per hour"}
+            </SortHeader>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((game) => (
+            <tr key={game.appid}>
+              <th scope="row">{game.name}</th>
+              <td className="num">{hours(game.minutes)}h</td>
+              <td className="num">{game.minutesTwoWeeks ? `${hours(game.minutesTwoWeeks)}h` : "—"}</td>
+              <td className="num">{priceTag(game.priceCents, split.priceCurrency)}</td>
+              <td className="num">{rateOf(game, split.priceCurrency) ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Sheet>
   );
 }
 
@@ -290,11 +500,18 @@ export function RecentCard({ recent }: { recent: Dashboard["recent"] }) {
   );
 }
 
-export function BacklogCard({ backlog }: { backlog: Backlog }) {
+export function BacklogCard({ backlog, currency }: { backlog: Backlog; currency: string | null }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
   return (
     <section className="panel warn">
       <div className="panel-head">
         <h2 className="panel-title">Backlog</h2>
+        {backlog.all.length > 0 && (
+          <button type="button" className="panel-action" onClick={() => dialogRef.current?.showModal()}>
+            Show all
+          </button>
+        )}
       </div>
       <div className="big-counts">
         <div className="big-count">
@@ -311,11 +528,85 @@ export function BacklogCard({ backlog }: { backlog: Backlog }) {
           {backlog.neverLaunchedTop.map((game) => (
             <li className="row" key={game.appid}>
               <span className="row-name">{game.name}</span>
+              <span className="row-value num">{priceTag(game.priceCents, currency)}</span>
             </li>
           ))}
         </ul>
       )}
+
+      <BacklogDialog dialogRef={dialogRef} backlog={backlog} currency={currency} />
     </section>
+  );
+}
+
+type BacklogSortKey = "name" | "lastPlayed" | "lifetime" | "price";
+
+function backlogValue(game: BacklogGame, key: BacklogSortKey): string | number | null {
+  switch (key) {
+    case "name":
+      return game.name;
+    case "lastPlayed":
+      return game.lastPlayedAt ? Date.parse(game.lastPlayedAt) : null;
+    case "lifetime":
+      return game.minutes;
+    case "price":
+      return game.priceCents;
+  }
+}
+
+function BacklogDialog({
+  dialogRef,
+  backlog,
+  currency,
+}: {
+  dialogRef: RefObject<HTMLDialogElement | null>;
+  backlog: Backlog;
+  currency: string | null;
+}) {
+  const [sort, setSort] = useState<Sort<BacklogSortKey>>(null);
+  const rows = sort
+    ? sortRows(backlog.all, (game) => backlogValue(game, sort.key), sort.descending)
+    : backlog.all;
+  const onSort = (key: BacklogSortKey) => setSort((current) => nextSort(current, key, key !== "name"));
+
+  return (
+    <Sheet
+      dialogRef={dialogRef}
+      title="Backlog"
+      onClose={() => setSort(null)}
+      foot={`${backlog.neverLaunched} never launched · ${backlog.dropped} idle 90+ days. Prices are only fetched for your most-played games, so many entries have none.`}
+    >
+      <table className="games-table">
+        <thead>
+          <tr>
+            <SortHeader column="name" sort={sort} onSort={onSort}>
+              Game
+            </SortHeader>
+            <SortHeader column="lastPlayed" sort={sort} onSort={onSort} numeric>
+              last played
+            </SortHeader>
+            <SortHeader column="lifetime" sort={sort} onSort={onSort} numeric>
+              lifetime
+            </SortHeader>
+            <SortHeader column="price" sort={sort} onSort={onSort} numeric>
+              price
+            </SortHeader>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((game) => (
+            <tr key={game.appid}>
+              <th scope="row">{game.name}</th>
+              <td className="num">
+                {game.minutes === 0 ? "never" : game.lastPlayedAt ? playedDate(game.lastPlayedAt) : "—"}
+              </td>
+              <td className="num">{game.minutes === 0 ? "0h" : `${hours(game.minutes)}h`}</td>
+              <td className="num">{priceTag(game.priceCents, currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Sheet>
   );
 }
 

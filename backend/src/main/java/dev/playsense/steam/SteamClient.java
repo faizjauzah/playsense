@@ -74,28 +74,64 @@ public class SteamClient {
         return Optional.of(Long.parseLong(response.response().steamid()));
     }
 
-    /** Returns empty when the store refuses the app (delisted, region-blocked, rate limited). */
-    public Optional<StoreApp> appDetails(int appid) {
+    /** Returns answered=false when the store did not answer for this app right now, so the caller can retry. */
+    public StoreLookup appDetails(int appid, String cc) {
         JsonNode node = http.get()
-                .uri("https://store.steampowered.com/api/appdetails?appids={id}&filters=genres,basic", appid)
+                .uri("https://store.steampowered.com/api/appdetails"
+                                + "?appids={id}&filters=genres,price_overview&cc={cc}",
+                        appid, cc)
                 .retrieve()
                 .body(JsonNode.class);
+        return parse(appid, node);
+    }
 
+    /**
+     * The filtered response carries genres and a price, but not the name, and omits the price for free games.
+     * A throttled store answers with {@code "data": []}, which must not be mistaken for a game without a price.
+     */
+    static StoreLookup parse(int appid, JsonNode node) {
         if (node == null) {
-            return Optional.empty();
+            return StoreLookup.unanswered();
         }
         JsonNode app = node.path(String.valueOf(appid));
         JsonNode data = app.path("data");
-        if (!app.path("success").asBoolean() || data.isMissingNode()) {
-            return Optional.empty();
+        if (!app.path("success").asBoolean()) {
+            return StoreLookup.refused();
+        }
+        if (!data.isObject()) {
+            return StoreLookup.unanswered();
         }
 
         List<String> genres = new ArrayList<>();
         data.path("genres").forEach(genre -> genres.add(genre.path("description").asText()));
-        return Optional.of(new StoreApp(data.path("name").asText(), genres));
+
+        JsonNode price = data.path("price_overview");
+        Price quoted = price.isMissingNode() || price.isNull()
+                ? null
+                : new Price(price.path("final").asInt(), price.path("currency").asText());
+        return StoreLookup.found(new StoreApp(data.path("name").asText(""), genres, quoted));
     }
 
-    public record StoreApp(String name, List<String> genres) {}
+    /** answered=false is temporary; answered=true with no app means the store no longer sells it. */
+    public record StoreLookup(boolean answered, StoreApp app) {
+
+        static StoreLookup unanswered() {
+            return new StoreLookup(false, null);
+        }
+
+        static StoreLookup refused() {
+            return new StoreLookup(true, null);
+        }
+
+        static StoreLookup found(StoreApp app) {
+            return new StoreLookup(true, app);
+        }
+    }
+
+    public record StoreApp(String name, List<String> genres, Price price) {}
+
+    /** cents is in Steam's minor unit for the quoted currency, not always a cent. */
+    public record Price(int cents, String currency) {}
 
     private String requireKey() {
         if (key == null || key.isBlank()) {
@@ -150,5 +186,6 @@ public class SteamClient {
             String steamid,
             String personaname,
             String avatarfull,
-            int communityvisibilitystate) {}
+            int communityvisibilitystate,
+            String loccountrycode) {}
 }

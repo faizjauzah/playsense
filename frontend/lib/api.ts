@@ -36,8 +36,30 @@ export function hours(minutes: number): string {
   return value >= 100 ? Math.round(value).toString() : value.toFixed(1);
 }
 
+export function money(cents: number, currency: string): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+/** Cost per hour: the Store price against lifetime hours. Steam quotes prices in minor units. */
+export function costPerHour(priceCents: number, minutes: number, currency: string): string {
+  const perHour = priceCents / 100 / (minutes / 60);
+  return perHour < 0.01 ? `<${money(1, currency)}/h` : `${money(Math.round(perHour * 100), currency)}/h`;
+}
+
 export function shortDate(iso: string): string {
   return new Date(iso + "T00:00:00Z").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function playedDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: "numeric",
     month: "short",
     day: "numeric",
   });

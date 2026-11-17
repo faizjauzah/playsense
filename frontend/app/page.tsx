@@ -150,7 +150,7 @@ export default function Home() {
         </div>
         {data.backlog && (
           <div className="span-4">
-            <BacklogCard backlog={data.backlog} />
+            <BacklogCard backlog={data.backlog} currency={data.split?.priceCurrency ?? null} />
           </div>
         )}
       </div>

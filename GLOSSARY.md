@@ -40,6 +40,16 @@ _Avoid_: Headline, KPI, total
 Owned Games with zero lifetime minutes (never launched), or with playtime but no activity for 90 days (dropped).
 _Avoid_: Unplayed, queue, wishlist
 
+### Value
+
+**Store price**:
+A Game's price on Steam's store at the moment PlaySense observed it, in the Player's Steam store currency. It is today's asking price, never what the Player paid.
+_Avoid_: Price paid, spend, purchase price
+
+**Cost per hour**:
+A Game's Store price divided by its lifetime hours. It exists only for Games with playtime; an unplayed Game has a price tag, not a rate.
+_Avoid_: Hours per dollar, value, ROI, worth
+
 ### Insight
 
 **Insight Report**:

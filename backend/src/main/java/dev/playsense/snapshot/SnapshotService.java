@@ -1,5 +1,6 @@
 package dev.playsense.snapshot;
 
+import dev.playsense.player.PlayerService;
 import dev.playsense.steam.SteamClient;
 import dev.playsense.steam.SteamClient.OwnedGame;
 import java.time.Duration;
@@ -20,10 +21,12 @@ public class SnapshotService {
 
     private final JdbcClient db;
     private final SteamClient steam;
+    private final PlayerService players;
 
-    public SnapshotService(JdbcClient db, SteamClient steam) {
+    public SnapshotService(JdbcClient db, SteamClient steam, PlayerService players) {
         this.db = db;
         this.steam = steam;
+        this.players = players;
     }
 
     public Optional<Snapshot> latest(long steamid) {
@@ -76,6 +79,8 @@ public class SnapshotService {
         }
 
         db.sql("update player set last_refresh_at = now() where steamid = ?").param(steamid).update();
+        // The store region is only exposed by the profile call, and it can change; refresh it with each capture.
+        steam.summary(steamid).ifPresent(summary -> players.updateCountry(steamid, summary.loccountrycode()));
         log.info("Captured snapshot {} for {} with {} games", snapshotId, steamid, games.size());
         return true;
     }

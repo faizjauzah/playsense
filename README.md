@@ -13,6 +13,7 @@ Type your Steam name, get one number, one trend line, and a plain-language read 
 - **The number that matters** — hours played in the last 30 days, next to your lifetime total.
 - **A trend that actually means something** — Steam keeps no playtime history, so PlaySense records its own snapshots of your library and diffs them. Every line and total is built from those deltas.
 - **Where the hours went** — your top games, your genre split, and the share of your life one game has quietly eaten.
+- **What each game cost you per hour** — the current Steam store price against lifetime hours, with the best and worst value among your most-played games. The current price, not what you paid.
 - **The backlog** — games you own and never launched, plus the ones you dropped 90 days ago.
 - **A verdict** — a short Insight Report in plain language, generated from your stats and cached so the same numbers never cost a second request.
 - **Nothing to trust it with** — read-only, no Steam credentials, no password.
@@ -96,7 +97,7 @@ Use a Postgres that keeps its data. Hosted free databases that expire take your 
 frontend/     Next.js 16 App Router, static export, plain CSS
 backend/      Spring Boot 3.3, JdbcClient (no JPA), Flyway
 Dockerfile    node build → maven build → JRE
-docs/adr/     four decisions worth reading before you change this
+docs/adr/     five decisions worth reading before you change this
 ```
 
 Backend tests: `docker run --rm -v "$PWD/backend":/app -w /app maven:3.9-eclipse-temurin-21 mvn test`
