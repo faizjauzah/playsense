@@ -1,0 +1,31 @@
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: playsense
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/playsense}
+    username: ${DB_USER:playsense}
+    password: ${DB_PASSWORD:playsense}
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+playsense:
+  cookie-secure: ${COOKIE_SECURE:false}
+  steam:
+    key: ${STEAM_API_KEY:}
+  gemini:
+    key: ${GEMINI_API_KEY:}
+    model: ${GEMINI_MODEL:gemini-2.5-flash}
+
+logging:
+  level:
+    dev.playsense: INFO

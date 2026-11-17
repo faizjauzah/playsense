@@ -1,0 +1,15 @@
+# Render's free tier sleeps after 15 minutes idle, and a cold JVM takes 30-60s.
+# Pinging every 14 minutes keeps it inside the 750 instance-hours/month budget (~720h).
+name: keep-warm
+
+on:
+  schedule:
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping PlaySense
+        run: curl -fsS --max-time 90 "${{ vars.PLAYSENSE_URL }}/actuator/health"
