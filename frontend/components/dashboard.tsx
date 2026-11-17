@@ -12,14 +12,12 @@ type Trend = NonNullable<Dashboard["trend"]>;
 type Backlog = NonNullable<Dashboard["backlog"]>;
 type Insight = NonNullable<Dashboard["insight"]>;
 
-const GENRE_COLORS = [
-  "oklch(0.85 0.12 190)",
-  "oklch(0.78 0.13 220)",
-  "oklch(0.72 0.13 165)",
-  "oklch(0.66 0.12 250)",
-  "oklch(0.6 0.11 285)",
-  "oklch(0.54 0.09 130)",
-];
+const GENRE_HUE_START = 190;
+
+function genreColor(index: number, count: number): string {
+  const hue = (GENRE_HUE_START + (index * 360) / Math.max(count, 1)) % 360;
+  return `oklch(0.8 0.1 ${hue.toFixed(1)})`;
+}
 
 export function TopBar({
   player,
@@ -449,8 +447,13 @@ export function GenreCard({ split }: { split: Split }) {
   const stops = genres.map((genre, index) => {
     const start = cursor;
     cursor += (genre.minutes / total) * 100;
-    return `${GENRE_COLORS[index % GENRE_COLORS.length]} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
+    return `${genreColor(index, genres.length)} ${start.toFixed(2)}% ${cursor.toFixed(2)}%`;
   });
+
+  const share = (minutes: number) => {
+    const pct = (minutes / total) * 100;
+    return pct >= 1 ? `${Math.round(pct)}%` : "<1%";
+  };
 
   return (
     <section className="panel">
@@ -467,9 +470,9 @@ export function GenreCard({ split }: { split: Split }) {
         <ul className="legend">
           {genres.map((genre, index) => (
             <li key={genre.genre}>
-              <span className="swatch" style={{ background: GENRE_COLORS[index % GENRE_COLORS.length] }} />
+              <span className="swatch" style={{ background: genreColor(index, genres.length) }} />
               <span className="legend-name">{genre.genre}</span>
-              <span className="legend-value num">{Math.round((genre.minutes / total) * 100)}%</span>
+              <span className="legend-value num">{share(genre.minutes)}</span>
             </li>
           ))}
         </ul>

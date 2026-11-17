@@ -30,6 +30,18 @@ public class GameMetadataService {
     /** A returning player with 25 stale prices should not spend 25 calls in one visit. */
     private static final int STALE_REFRESHES = 8;
 
+    /** Steam's genre list also carries store states, software categories and content warnings. */
+    private static final Set<String> NOT_GENRES = Set.of(
+            "Free To Play", "Early Access", "Utilities", "Animation & Modeling", "Design & Illustration",
+            "Photo Editing", "Video Production", "Web Publishing", "Audio Production", "Game Development",
+            "Education", "Software Training", "Accounting", "Documentary", "Tutorial",
+            "Violent", "Gore", "Nudity", "Sexual Content");
+
+    /** One Game is charted under one Genre, so genre hours can never exceed lifetime hours. */
+    static String primaryGenre(List<String> genres) {
+        return genres.stream().filter(genre -> !NOT_GENRES.contains(genre)).findFirst().orElse("");
+    }
+
     /** The games the dashboard can display: the top 25 by playtime plus the five backlog names. */
     private static final String TARGETS = """
             with target as (
@@ -60,6 +72,7 @@ public class GameMetadataService {
         List<Integer> missing = due(TARGETS + """
                         select t.appid from target t
                         where not exists (select 1 from game_price p where p.appid = t.appid and p.cc = :cc)
+                           or not exists (select 1 from game g where g.appid = t.appid and g.primary_genre is not null)
                         order by t.minutes desc, t.appid
                         """, snapshotId, cc, null);
 
@@ -114,13 +127,15 @@ public class GameMetadataService {
         String name = app == null || app.name().isBlank() ? null : app.name();
         Integer cents = app == null || app.price() == null ? null : app.price().cents();
         String currency = app == null || app.price() == null ? null : app.price().currency();
+        String primary = primaryGenre(app == null ? List.of() : app.genres());
 
         db.sql("""
-                        insert into game (appid, name, fetched_at) values (?, coalesce(?, 'App ' || ?), now())
+                        insert into game (appid, name, primary_genre, fetched_at)
+                        values (?, coalesce(?, 'App ' || ?), ?, now())
                         on conflict (appid) do update
-                          set name = coalesce(?, game.name), fetched_at = now()
+                          set name = coalesce(?, game.name), primary_genre = excluded.primary_genre, fetched_at = now()
                         """)
-                .params(appid, name, appid, name)
+                .params(appid, name, appid, primary, name)
                 .update();
 
         // A row with no cents records that the store was asked and had no price to give, so it is not retried

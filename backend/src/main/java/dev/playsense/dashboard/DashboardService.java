@@ -167,13 +167,12 @@ public class DashboardService {
                 .list();
 
         List<GenreMinutes> byGenre = db.sql("""
-                        select gg.genre, sum(e.minutes)::int as minutes
+                        select g.primary_genre as genre, sum(e.minutes)::int as minutes
                         from snapshot_entry e
-                        join game_genre gg on gg.appid = e.appid
-                        where e.snapshot_id = ? and e.minutes > 0
-                        group by gg.genre
+                        join game g on g.appid = e.appid
+                        where e.snapshot_id = ? and e.minutes > 0 and g.primary_genre <> ''
+                        group by g.primary_genre
                         order by minutes desc
-                        limit 6
                         """)
                 .param(snapshotId)
                 .query((rs, row) -> new GenreMinutes(rs.getString("genre"), rs.getInt("minutes")))
@@ -181,8 +180,8 @@ public class DashboardService {
 
         int coveredMinutes = db.sql("""
                         select coalesce(sum(e.minutes), 0) from snapshot_entry e
-                        where e.snapshot_id = ?
-                          and exists (select 1 from game_genre gg where gg.appid = e.appid)
+                        join game g on g.appid = e.appid
+                        where e.snapshot_id = ? and g.primary_genre <> ''
                         """)
                 .param(snapshotId)
                 .query(Integer.class)

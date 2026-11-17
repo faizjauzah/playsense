@@ -20,6 +20,10 @@ _Avoid_: Collection, catalogue, backlog
 A Steam application, identified by its appid, plus any store metadata we have cached for it.
 _Avoid_: Title, app, product
 
+**Genre**:
+A Game's kind, taken from Steam's own genre labels. A Game has at most one Genre in PlaySense, so genre hours never double count; store states (Free To Play, Early Access), software categories and content warnings are not Genres.
+_Avoid_: Tag, category, label, classification
+
 **Playtime Snapshot**:
 One timestamped capture of a Player's per-Game lifetime minutes. The only source of history in the system, because Steam exposes no historical playtime.
 _Avoid_: Reading, sample, sync
