@@ -18,6 +18,7 @@ import dev.playsense.insight.InsightService;
 import dev.playsense.player.PlayerService;
 import dev.playsense.player.PlayerService.Player;
 import dev.playsense.snapshot.SnapshotService;
+import dev.playsense.steam.SteamClient;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -44,14 +45,16 @@ public class DashboardService {
     private final SnapshotService snapshots;
     private final GameMetadataService gameMetadata;
     private final InsightService insights;
+    private final SteamClient steam;
 
     public DashboardService(JdbcClient db, PlayerService players, SnapshotService snapshots,
-                            GameMetadataService gameMetadata, InsightService insights) {
+                            GameMetadataService gameMetadata, InsightService insights, SteamClient steam) {
         this.db = db;
         this.players = players;
         this.snapshots = snapshots;
         this.gameMetadata = gameMetadata;
         this.insights = insights;
+        this.steam = steam;
     }
 
     public PlayerView playerView(long steamid) {
@@ -60,7 +63,7 @@ public class DashboardService {
     }
 
     public DashboardView load(long steamid, boolean forceRefresh) {
-        Player player = player(steamid);
+        Player player = visiblePlayer(steamid);
         PlayerView playerView = new PlayerView(player.steamid(), player.personaname(), player.avatarUrl(),
                 player.libraryPrivate());
         // Prices are quoted in the store region the profile exposes; USD is the default when it hides one.
@@ -318,6 +321,27 @@ public class DashboardService {
     private Player player(long steamid) {
         return players.find(steamid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unknown player"));
+    }
+
+    /**
+     * Visibility is only written at sign-in, so a profile made public mid-session must be re-read here.
+     * Without this, "check again" on the private page could never notice the change.
+     */
+    private Player visiblePlayer(long steamid) {
+        Player player = player(steamid);
+        if (!player.libraryPrivate()) {
+            return player;
+        }
+        try {
+            var summary = steam.summary(steamid);
+            if (summary.isPresent() && summary.get().communityvisibilitystate() == 3) {
+                players.upsert(summary.get());
+                return player(steamid);
+            }
+        } catch (RuntimeException failure) {
+            // A Steam blip must not turn the private page into an error page.
+        }
+        return player;
     }
 
     private record DeltaRow(Instant takenAt, int minutes) {}

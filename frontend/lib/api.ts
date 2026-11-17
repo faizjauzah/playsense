@@ -27,6 +27,17 @@ export async function refreshDashboard(): Promise<Dashboard> {
   return response.json();
 }
 
+export async function getMe(): Promise<Dashboard["player"]> {
+  const response = await fetch("/api/me", { credentials: "same-origin" });
+  if (response.status === 401) {
+    throw new Unauthenticated();
+  }
+  if (!response.ok) {
+    throw new Error(`Profile request failed (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function deleteSession(): Promise<void> {
   await fetch("/api/session", { method: "DELETE", credentials: "same-origin" });
 }

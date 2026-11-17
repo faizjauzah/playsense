@@ -14,6 +14,10 @@ _Avoid_: User, account, gamer
 The set of Games a Player owns, as Steam reports it at one moment. A Library is an observation, not a stored collection — it is replaced by the next observation.
 _Avoid_: Collection, catalogue, backlog
 
+**Private Library**:
+The state in which Steam reports no Library for a Player. It covers a profile that is not public, game details that are not public, and an account that owns no Games; PlaySense treats all three as one state because Steam gives it nothing to chart.
+_Avoid_: Empty library, hidden profile
+
 ### Playtime
 
 **Game**:

@@ -62,7 +62,7 @@ export default function Home() {
   };
 
   const onSignOut = async () => {
-    await deleteSession();
+    await deleteSession().catch(() => {});
     window.location.replace("/login/");
   };
 
@@ -73,6 +73,9 @@ export default function Home() {
         <p>{error}</p>
         <button className="btn" onClick={() => window.location.reload()}>
           Try again
+        </button>
+        <button className="btn" onClick={onSignOut}>
+          Use a different account
         </button>
       </main>
     );
