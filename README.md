@@ -1,8 +1,23 @@
 # PlaySense
 
-Your Steam playtime, and what it says about you. Enter your Steam name, get one number, one trend line, and a plain-language read on where the hours went.
+**Your Steam playtime, and what it says about you.**
 
-## How it fits together
+Type your Steam name, get one number, one trend line, and a plain-language read on where the hours went. No Steam login, no password, nothing to install.
+
+### [**Try it live →**](https://p01--playsense--w58jx2wsmcgt.code.run/)
+
+![The PlaySense sign-in screen asking for a Steam vanity name or SteamID64](docs/screenshots/login.png)
+
+## What you get
+
+- **The number that matters** — hours played in the last 30 days, next to your lifetime total.
+- **A trend that actually means something** — Steam keeps no playtime history, so PlaySense records its own snapshots of your library and diffs them. Every line and total is built from those deltas.
+- **Where the hours went** — your top games, your genre split, and the share of your life one game has quietly eaten.
+- **The backlog** — games you own and never launched, plus the ones you dropped 90 days ago.
+- **A verdict** — a short Insight Report in plain language, generated from your stats and cached so the same numbers never cost a second request.
+- **Nothing to trust it with** — read-only, no Steam credentials, no password.
+
+## How it works
 
 ```
 Browser ──► Next.js static export (served by Spring Boot) ──► Spring Boot API ──► Steam Web API
@@ -11,23 +26,28 @@ Browser ──► Next.js static export (served by Spring Boot) ──► Spring
                                                                 └──► Postgres (Neon)
 ```
 
-Steam exposes **no playtime history**, so every trend is built from snapshots this service takes of your own library. See `docs/adr/0001`.
+One process serves the UI, the API and the cookie. The interesting constraint is that Steam exposes **no playtime history** — so the trend is not a Steam feature, it's this service remembering what your library looked like yesterday. Read more in `docs/adr/0001`.
 
-Decisions worth knowing before you change things:
+## No Steam login. On purpose.
 
-- `docs/adr/0001-playtime-snapshots-are-the-only-history.md`
-- `docs/adr/0002-one-image-next-static-export-inside-spring.md`
-- `docs/adr/0003-insight-reports-are-cached-and-optional.md`
-- `GLOSSARY.md` — the words the code uses (Player, Playtime Snapshot, Playtime Delta, Insight Report…)
+You identify yourself by the Steam vanity name or 17-digit SteamID64 that's already public. PlaySense resolves it through the Steam Web API, sets an httpOnly cookie, and reads your library. It never asks for a password and never writes anything to Steam.
+
+The trade is honest: anyone who knows that SteamID can open the same dashboard. Nothing shown here is private that Steam isn't already publishing — which is also why a private library sends you to a page explaining that, instead of a broken chart. See `docs/adr/0004`.
+
+![The PlaySense dashboard: a 30-day playtime hero number, a trend line, top games, genres, recent activity, backlog and an insight report](docs/screenshots/dashboard.png)
+
+## The Insight Report
+
+It's text generated from your statistics and validated against a fixed schema, cached against a hash of the stats it describes. Without a Gemini key the app is fully functional: the same report is filled deterministically from a template, and only the attribution line changes. When Gemini is on, game names and playtimes go to Google; that line is shown under the report. See `docs/adr/0003`.
 
 ## Run it locally
 
-You need Docker. Two ways:
+You need Docker.
 
 **Everything in containers**
 
 ```bash
-cp .env.example .env        # add STEAM_API_KEY and GEMINI_API_KEY
+cp .env.example .env        # add STEAM_API_KEY and, optionally, GEMINI_API_KEY
 docker compose up --build   # http://localhost:8080
 ```
 
@@ -40,16 +60,23 @@ cd frontend && npm install && npm run dev   # http://localhost:3000
 
 `next dev` proxies `/api/*` to `localhost:8080`. The session cookie ignores ports, so signing in on either origin works for both.
 
-Get a Steam key at <https://steamcommunity.com/dev/apikey>. The app runs without a Gemini key — the Insight Report is written from a template instead.
+Get a Steam key at <https://steamcommunity.com/dev/apikey>. Without a Gemini key the Insight Report comes from the template fallback.
 
-## Deploy (free)
+## Deploy
 
-1. Create a free Postgres at [Neon](https://neon.tech) and copy the `postgresql://…` connection string. Render's own free Postgres deletes itself after 30 days, which would take your history with it.
-2. In Render, create a Blueprint from this repo (`render.yaml` builds the single Docker image).
-3. Set `DATABASE_URL`, `STEAM_API_KEY`, `GEMINI_API_KEY`. `COOKIE_SECURE=true` is already in the blueprint.
-4. Set a GitHub repository variable `PLAYSENSE_URL` to your service URL; `.github/workflows/keep-warm.yml` pings it every 14 minutes so the free instance rarely sleeps.
+The repo builds to a single Docker image: Next.js exported to static files, served by Spring Boot, with Flyway migrating on start. This one runs on Northflank; nothing in the image is host-specific.
 
-Free tier maths: 750 instance-hours per workspace per month. One service kept warm by a 14-minute ping is ~720 hours, so there is deliberately only one service. If it does sleep, the UI says "waking the server" instead of pretending to be broken.
+| Variable | Needed | Notes |
+|---|---|---|
+| `DATABASE_URL` | yes | `jdbc:postgresql://host:5432/db` |
+| `DB_USER`, `DB_PASSWORD` | yes | Default to `playsense` for local compose |
+| `STEAM_API_KEY` | yes | Without it there is nothing to fetch |
+| `GEMINI_API_KEY` | no | Enables the generated Insight Report |
+| `GEMINI_MODEL` | no | Defaults in `application.yml` |
+| `COOKIE_SECURE` | on HTTPS | `true` so the session cookie is `Secure` |
+| `PORT` | no | Defaults to `8080` |
+
+Use a Postgres that keeps its data. Hosted free databases that expire take your snapshot history with them, and the history is the product.
 
 ## Endpoints
 
@@ -69,7 +96,11 @@ Free tier maths: 750 instance-hours per workspace per month. One service kept wa
 frontend/     Next.js 16 App Router, static export, plain CSS
 backend/      Spring Boot 3.3, JdbcClient (no JPA), Flyway
 Dockerfile    node build → maven build → JRE
-render.yaml   one free docker web service
+docs/adr/     four decisions worth reading before you change this
 ```
 
 Backend tests: `docker run --rm -v "$PWD/backend":/app -w /app maven:3.9-eclipse-temurin-21 mvn test`
+
+## The words the code uses
+
+`GLOSSARY.md` is the vocabulary — Player, Library, Playtime Snapshot, Playtime Delta, Hero stat, Backlog, Insight Report, Coverage — each with the terms the code deliberately avoids.
